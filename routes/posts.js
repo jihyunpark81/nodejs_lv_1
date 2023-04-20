@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const Posts = require('../schemas/post');
+const Posts = require('../schemas/post.js');
 
 //게시글 생성
 router.post('/', async (req, res) => {
