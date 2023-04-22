@@ -24,15 +24,31 @@ router.post('/', async (req, res) => {
 //게시글 전체조회   GET -> localhost:3000/posts
 router.get('/', async (req, res) => {
     const post = await Posts.find({}, { __v: 0, password: 0, content: 0 });
-    const postPrint = post.map((value) => {
-        return {
-            postId: value._id,
-            user: value.user,
-            title: value.title,
-            createdAt: value.createdAt,
-        };
-    });
-    res.json({ data: postPrint });
+    const postPrint = post
+        .map((value) => {
+            return {
+                postId: value._id,
+                user: value.user,
+                title: value.title,
+                createdAt: value.createdAt,
+            };
+        })
+        .sort((a, b) => {
+            console.log(b.createdAt.getTime());
+            return b.createdAt.getTime() - a.createdAt.getTime();
+        });
+
+    // const postPrintSort = function (list) {
+    //     const sorted_list = list.sort(function (a, b) {
+    //         return (
+    //             new Date(b.createdAt).getTime() -
+    //             new Date(a.createdAt).getTime()
+    //         );
+    //     });
+    //     return sorted_list;
+    // };
+
+    return res.json({ data: postPrint });
 });
 
 // 게시글 상세조회 : GET -> localhost:3000/posts/:postId
