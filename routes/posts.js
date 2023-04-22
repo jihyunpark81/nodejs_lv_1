@@ -37,6 +37,7 @@ router.get('/', async (req, res) => {
             console.log(b.createdAt.getTime());
             return b.createdAt.getTime() - a.createdAt.getTime();
         });
+    // hi
 
     // const postPrintSort = function (list) {
     //     const sorted_list = list.sort(function (a, b) {
