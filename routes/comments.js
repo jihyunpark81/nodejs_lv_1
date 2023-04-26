@@ -1,115 +1,153 @@
 const express = require('express');
 const router = express.Router();
-const Posts = require('../schemas/post.js');
-//js 붙일지말지
-const Comments = require('../schemas/comment.js');
+const post_db = require('../schemas/post');
+const comment_db = require('../schemas/comment');
+
+const authMiddleware = require('../middlewares/auth-middleware');
 
 //댓글 생성
-router.post('/:_postId/comments', async (req, res) => {
+router.post('/:postId/comments', authMiddleware, async (req, res) => {
     try {
-        const { _postId } = req.params;
-        try {
-            const { user, password, content } = req.body;
-            await Comments.create({ postId: _postId, user, password, content });
-            return res.status(200).json({ message: '댓글을 생성하였습니다.' });
-        } catch {
+        const { comment } = req.body;
+        const { postId } = req.params;
+        const { userId, nickname } = res.locals.user;
+        const existPost = await post_db.findOne({ _id: postId });
+
+        if (!existPost) {
+            return res
+                .status(404)
+                .json({ errorMessage: '게시글이 존재하지 않습니다.' });
+        }
+        if (comment.length === 0) {
             return res
                 .status(400)
-                .send({ message: '댓글 내용을 입력해주세요.' });
+                .json({ message: '댓글 내용을 입력해주세요.' });
         }
+        if (!comment) {
+            return res
+                .status(412)
+                .json({ errorMessage: '데이터 형식이 올바르지 않습니다.' });
+        }
+
+        await comment_db.create({ postId, userId, nickname, comment });
+        return res.status(201).json({ message: '댓글을 작성하였습니다.' });
     } catch {
         return res
             .status(400)
-            .send({ message: '데이터 형식이 올바르지 않습니다.' });
+            .send({ errorMessage: '댓글 작성에 실패하였습니다.' });
     }
 });
 
 //댓글 조회하기
-router.get('/:_postId/comments', async (req, res) => {
+router.get('/:postId/comments', async (req, res) => {
     try {
-        const { _postId } = req.params;
-        const comments = await Comments.find(
-            { postId: _postId },
-            { __v: 0, postId: 0, password: 0 }
-        );
+        const { postId } = req.params;
+        const comments = await comment_db.find({ postId });
+        if (!postId) {
+            return res
+                .status(404)
+                .json({ errorMessage: '게시글이 존재하지 않습니다.' });
+        }
         const commentsPrint = comments.map((value) => {
             return {
-                commentId: value._id,
-                user: value.user,
-                content: value.content,
+                commentId: value.commentId,
+                userId: value.userId,
+                nickname: value.nickname,
+                comment: value.comment,
                 createdAt: value.createdAt,
+                updatedAt: value.updatedAt,
             };
         });
-        res.json({ data: commentsPrint });
+        res.status(200).json({ data: commentsPrint });
     } catch (err) {
-        console.log(err);
-        res.status(400).send({ message: '데이터 형식이 올바르지 않습니다.' });
+        return res
+            .status(400)
+            .send({ errorMessage: '댓글 조회에 실패하였습니다.' });
     }
 });
 
-//댓글 수정 : PUT -> localhost:3000/posts/
-//게시글 id 찾기
+//댓글 수정 : PUT -> localhost:3000/posts/:postId/comments/:commentId
 
-router.put('/:_postId/comments/:_commentId', async (req, res) => {
+router.put('/:postId/comments/:commentId', authMiddleware, async (req, res) => {
     try {
-        const { _postId, _commentId } = req.params;
-        const [post] = await Posts.find({ _id: _postId });
-        const [comment] = await Comments.find({ _id: _commentId });
-        const { password, content } = req.body;
-        if (!post) {
+        const { userId } = res.locals.user;
+        const { postId, commentId } = req.params;
+        const { comment } = req.body;
+        const existPost = await post_db.findOne({ _id: postId });
+        const existComment = await comment_db.findOne({ _id: commentId });
+
+        if (!existPost) {
             return res
                 .status(404)
-                .json({ message: '게시글 조회에 실패하였습니다.' });
+                .json({ errorMessage: '게시글이 존재하지 않습니다.' });
         }
-        if (!comment) {
+        if (!existComment) {
             return res
                 .status(404)
-                .json({ message: '댓글 조회에 실패하였습니다.' });
+                .json({ errorMessage: '댓글이 존재하지 않습니다.' });
         }
-        if (password === comment.password) {
-            await Comments.updateOne(
-                { _id: _commentId },
-                { $set: { content: content } }
+        if (comment.length === 0) {
+            return res
+                .status(404)
+                .json({ errorMessage: '데이터 형식이 올바르지 않습니다.' });
+        }
+        if (userId === existComment.userId) {
+            const date = new Date();
+            await comment_db.updateOne(
+                { _id: commentId },
+                { $set: { comment, updatedAt: date } }
             );
             return res.status(200).json({ message: '댓글을 수정하였습니다.' });
         } else {
-            return res.status(404).json({ message: '비밀번호가 다릅니다.' });
+            return res.status(403).json({
+                errorMessage: '댓글의 수정 권한이 존재하지 않습니다.',
+            });
         }
     } catch (err) {
         console.log(err);
-        res.status(400).send({ message: '데이터 형식이 올바르지 않습니다.' });
+        res.status(400).send({
+            errorMessage: '댓글 수정에 실패하였습니다.',
+        });
     }
 });
 
-// 댓글 삭제 : DELETE -> localhost:3000/posts/:postId/comments/:commentId
-router.delete('/:_postId/comments/:_commentId', async (req, res) => {
-    try {
-        const { _postId, _commentId } = req.params;
-        const [post] = await Posts.find({ _id: _postId });
-        const [comment] = await Comments.find({ _id: _commentId });
-        const { password } = req.body;
-        if (!post) {
-            return res
-                .status(404)
-                .json({ message: '게시글 조회에 실패하였습니다.' });
+router.delete(
+    '/:postId/comments/:commentId',
+    authMiddleware,
+    async (req, res) => {
+        try {
+            const { userId } = res.locals.user;
+            const { postId, commentId } = req.params;
+            const existPost = await post_db.findOne({ _id: postId });
+            const existComment = await comment_db.findOne({ _id: commentId });
+
+            if (!existPost) {
+                return res
+                    .status(404)
+                    .json({ errorMessage: '게시글이 존재하지 않습니다.' });
+            }
+            if (!existComment) {
+                return res
+                    .status(404)
+                    .json({ errorMessage: '댓글이 존재하지 않습니다.' });
+            }
+            if (userId === existComment.userId) {
+                await comment_db.deleteOne({ _id: commentId });
+                return res
+                    .status(200)
+                    .json({ message: '댓글을 삭제하였습니다.' });
+            } else {
+                return res.status(403).json({
+                    errorMessage: '댓글의 삭제 권한이 존재하지 않습니다.',
+                });
+            }
+        } catch (err) {
+            console.log(err);
+            res.status(400).send({
+                errorMessage: '댓글 삭제에 실패하였습니다.',
+            });
         }
-        if (!comment) {
-            return res
-                .status(404)
-                .json({ message: '댓글 조회에 실패하였습니다.' });
-        }
-        if (password === comment.password) {
-            await Comments.deleteOne({ _id: _commentId });
-            return res.status(200).json({ message: '댓글을 삭제하였습니다.' });
-        } else {
-            return res.status(404).json({ message: '비밀번호가 다릅니다.' });
-        }
-    } catch (err) {
-        console.log(err);
-        return res
-            .status(400)
-            .send({ message: '데이터 형식이 올바르지 않습니다.' });
     }
-});
+);
 
 module.exports = router;
